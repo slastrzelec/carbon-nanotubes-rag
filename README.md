@@ -9,6 +9,8 @@ rebuilt in six phases into a tested, containerized system with a REST API (see b
 **Live demo (Streamlit UI):** [carbon-nanotubes-raman-rag.streamlit.app](https://carbon-nanotubes-raman-rag.streamlit.app/)  
 **Live API (Swagger docs):** [rag-raman-api.onrender.com/docs](https://rag-raman-api.onrender.com/docs)
 
+![Streamlit demo](screenshots/demo.png)
+
 ## Overview
 
 - Semantic + keyword hybrid search over 24 scientific PDFs on Raman spectroscopy of carbon nanotubes
@@ -322,6 +324,13 @@ Ideas for further extending the project, not currently planned:
   favor of shipping `faithfulness` results quickly; a full reference answer
   set would give a more complete picture of retrieval quality specifically,
   separate from generation quality.
+
+## Related projects
+
+Part of the same carbon-nanotube work:
+
+- [Carbon Nanotube Visualizer](https://github.com/slastrzelec/carbon-nanotube-visualizer) — structure and electronic-property modeling ([live demo](https://carbon-nanotube-visualizer.streamlit.app/))
+- [Raman Spectroscopy Analyzer](https://github.com/slastrzelec/raman-spectroscopy-analyzer) — experimental spectral characterization of CNT samples ([live demo](https://raman-spectroscopy-analyzer.streamlit.app/))
 
 ## License
 
