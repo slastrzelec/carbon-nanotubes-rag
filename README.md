@@ -6,7 +6,7 @@ A Retrieval-Augmented Generation (RAG) system for semantic search and Q&A over s
 publications on Raman spectroscopy of carbon nanotubes. Started as a simple Streamlit demo,
 rebuilt in six phases into a tested, containerized system with a REST API (see below).
 
-**Live demo (Streamlit UI):** [carbon-nanotubes-rag.streamlit.app](https://carbon-nanotubes-rag.streamlit.app/)  
+**Live demo (Streamlit UI):** [carbon-nanotubes-raman-rag.streamlit.app](https://carbon-nanotubes-raman-rag.streamlit.app/)  
 **Live API (Swagger docs):** [rag-raman-api.onrender.com/docs](https://rag-raman-api.onrender.com/docs)
 
 ## Overview
