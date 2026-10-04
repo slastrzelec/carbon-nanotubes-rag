@@ -1,6 +1,7 @@
 -r requirements.txt
 
-pytest
-pytest-cov
-ragas
-datasets
+pytest==9.1.1
+pytest-cov==7.1.0
+httpx==0.28.1
+ragas==0.3.1
+datasets==5.0.1

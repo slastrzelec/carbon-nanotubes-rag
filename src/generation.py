@@ -48,8 +48,11 @@ def rag_query(
     query: str,
     top_k: int = config.DEFAULT_TOP_K,
     selected_files: list[str] | None = None,
+    use_hybrid: bool = True,
 ) -> tuple[str, list[dict]]:
     """Pełny przepływ RAG: retrieval + generacja. Główny punkt wejścia dla app.py i api.py."""
-    retrieved_chunks = retriever.retrieve(query, top_k=top_k, selected_files=selected_files)
+    retrieved_chunks = retriever.retrieve(
+        query, top_k=top_k, selected_files=selected_files, use_hybrid=use_hybrid
+    )
     answer = generate_answer(query, retrieved_chunks)
     return answer, retrieved_chunks

@@ -25,6 +25,11 @@ CHUNK_OVERLAP_TOKENS = 20     # nakładka między chunkami (w słowach)
 DEFAULT_TOP_K = 5
 HYBRID_ALPHA = 0.5  # waga dense vs BM25 w hybrid search (0=czysty BM25, 1=czysty dense)
 
+# 🔹 Ochrona kosztów publicznego wdrożenia (każde pytanie = płatne wywołanie OpenAI)
+MAX_QUESTION_CHARS = 500
+RATE_LIMIT_PER_MINUTE = 10   # na klienta
+DAILY_QUERY_CAP = 500        # łącznie, dla wszystkich klientów
+
 # 🔹 LLM
 LLM_MODEL = "gpt-4o-mini"
 LLM_MAX_TOKENS = 500

@@ -9,6 +9,8 @@ import re
 
 from src.retrieval import Retriever
 from src.generation import rag_query
+from src import config
+from src.ratelimit import QueryLimiter
 
 # 🔹 Cache Retrievera - ciężkie zasoby (model, indeks) ładowane raz na sesję
 @st.cache_resource
@@ -16,6 +18,25 @@ def load_retriever():
     return Retriever()
 
 retriever = load_retriever()
+
+
+# 🔹 Cost guard: every question is a paid OpenAI call. The limiter is shared
+# by all sessions of this process (global daily cap), plus a per-session cap.
+@st.cache_resource
+def get_limiter():
+    return QueryLimiter(config.RATE_LIMIT_PER_MINUTE * 6, config.DAILY_QUERY_CAP)
+
+
+MAX_QUESTIONS_PER_SESSION = 20
+
+
+@st.cache_data(show_spinner=False)
+def cached_default_answer(query, top_k, selected_files, use_hybrid):
+    """The pre-filled example question is answered once and cached, so page
+    loads (including bots) do not each trigger an OpenAI call."""
+    return rag_query(
+        retriever, query, top_k=top_k, selected_files=list(selected_files), use_hybrid=use_hybrid
+    )
 
 # 🔹 Highlight keywords
 def highlight_keywords(text, keywords):
@@ -145,8 +166,8 @@ with st.sidebar.expander("⚙️ This demo is one of two interfaces"):
 This Streamlit app is a UI on top of a full production-style system built around the same RAG pipeline:
 
 - 🔌 **[Live REST API (Swagger docs)](https://rag-raman-api.onrender.com/docs)** — the same retrieval/generation logic, exposed as a proper API (`/query`, `/documents`, `/health`), with request validation and error handling.
-- 💻 **[Full source code on GitHub](https://github.com/slastrzelec/13_RAG_raman_carbon_nanotubes)** — includes:
-  - Unit tests (21 passing) and RAGAs evaluation (faithfulness scoring)
+- 💻 **[Full source code on GitHub](https://github.com/slastrzelec/carbon-nanotubes-rag)** — includes:
+  - Unit tests (31 passing) and RAGAs evaluation (faithfulness scoring)
   - Structured JSON logging
   - Docker + docker-compose (this UI and the API each run as a separate container)
   - CI/CD via GitHub Actions (tests run automatically on every push)
@@ -176,21 +197,51 @@ query = st.text_input(
     "❓ Ask your question (English recommended — source documents are in English):",
     value=DEFAULT_QUERY,
     placeholder="e.g., What is RBM in carbon nanotubes?",
+    max_chars=config.MAX_QUESTION_CHARS,
 )
 top_k = st.slider("📊 Fragments to retrieve:", 1, 10, 5)
 
-if st.button("🔍 Ask question", type="primary") or query == DEFAULT_QUERY:
-    with st.spinner("⏳ Searching and generating answer..."):
-        answer, retrieved_chunks = rag_query(
-            retriever, query, top_k=top_k, selected_files=selected_files
-        )
+asked = st.button("🔍 Ask question", type="primary")
+# Auto-run only the pre-filled example with the default settings (one cached
+# call); any other combination requires pressing the button.
+run_default = (
+    not asked
+    and query == DEFAULT_QUERY
+    and selected_files == all_files[:5]
+    and top_k == 5
+    and use_hybrid
+)
+
+answer = None
+if asked or run_default:
+    if not query.strip():
+        st.warning("Please enter a question.")
+    elif run_default:
+        with st.spinner("⏳ Searching and generating answer..."):
+            answer, retrieved_chunks = cached_default_answer(
+                query, top_k, tuple(selected_files), use_hybrid
+            )
+    else:
+        st.session_state["questions_asked"] = st.session_state.get("questions_asked", 0) + 1
+        if st.session_state["questions_asked"] > MAX_QUESTIONS_PER_SESSION:
+            st.warning("Question limit for this session reached. Reload the page to continue.")
+        elif get_limiter().check("ui"):
+            st.warning("The demo's daily query limit has been reached. Please try again tomorrow.")
+        else:
+            with st.spinner("⏳ Searching and generating answer..."):
+                answer, retrieved_chunks = rag_query(
+                    retriever, query, top_k=top_k,
+                    selected_files=selected_files, use_hybrid=use_hybrid,
+                )
+
+if answer is not None:
     st.success("✅ Answer generated!")
 
     col1, col2 = st.columns([1, 2])
 
     with col1:
         st.markdown("### 💬 Answer")
-        st.text_area("", answer, height=300)
+        st.text_area("Answer", answer, height=300, label_visibility="collapsed")
 
     with col2:
         st.markdown("### 📄 Top Retrieved Fragments")

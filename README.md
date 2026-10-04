@@ -1,12 +1,12 @@
 # RAG – Raman Nanotubes QA
 
-[![Tests](https://github.com/slastrzelec/13_RAG_raman_carbon_nanotubes/actions/workflows/tests.yml/badge.svg)](https://github.com/slastrzelec/13_RAG_raman_carbon_nanotubes/actions/workflows/tests.yml)
+[![Tests](https://github.com/slastrzelec/carbon-nanotubes-rag/actions/workflows/tests.yml/badge.svg)](https://github.com/slastrzelec/carbon-nanotubes-rag/actions/workflows/tests.yml)
 
 A Retrieval-Augmented Generation (RAG) system for semantic search and Q&A over scientific
 publications on Raman spectroscopy of carbon nanotubes. Started as a simple Streamlit demo,
-now being rebuilt into a production-grade RAG API (v2-production branch).
+rebuilt in six phases into a tested, containerized system with a REST API (see below).
 
-**Live demo (Streamlit UI):** [carbon-nanotubes-rag.streamlit.app](https://carbon-nanotubes-rag.streamlit.app/)
+**Live demo (Streamlit UI):** [carbon-nanotubes-rag.streamlit.app](https://carbon-nanotubes-rag.streamlit.app/)  
 **Live API (Swagger docs):** [rag-raman-api.onrender.com/docs](https://rag-raman-api.onrender.com/docs)
 
 ## Overview
@@ -269,6 +269,34 @@ uvicorn api:app --reload
 pytest tests/ -v
 ```
 
+## Public demo protections
+
+Every question triggers a paid OpenAI call, so the public deployments are
+protected against abuse and runaway cost:
+
+- Questions are limited to 500 characters (API validation and UI input).
+- The API allows 10 requests per minute per client and 500 queries per day in
+  total (HTTP 429 beyond that); the UI has a daily cap and a per-session cap.
+- The pre-filled example question is answered once and cached, so page loads
+  do not each trigger an OpenAI call.
+- Limits are enforced in process memory (`src/ratelimit.py`): they reset on
+  restart and are not shared between instances, which is enough for a single
+  free-tier instance. The per-client key comes from `X-Forwarded-For` and can
+  be spoofed, so the global daily cap is the actual cost ceiling.
+
+## Limitations
+
+- The evaluation covers 14 hand-written questions and one metric
+  (faithfulness) scored by an LLM judge, so the ~0.80–0.82 figure is an
+  indication, not a precise measurement. Retrieval quality (context precision)
+  was not measured.
+- Answers are grounded in a small corpus of about 25 papers; questions outside
+  it get a refusal or a general-knowledge answer, not a literature search.
+- The embedding model (`all-MiniLM-L6-v2`) is a small general-purpose model,
+  not tuned for spectroscopy terminology.
+- The deployment runs on free tiers: the first request after inactivity takes
+  30–60 seconds while the services wake up.
+
 ## Roadmap
 
 All planned phases are complete:
@@ -294,3 +322,7 @@ Ideas for further extending the project, not currently planned:
   favor of shipping `faithfulness` results quickly; a full reference answer
   set would give a more complete picture of retrieval quality specifically,
   separate from generation quality.
+
+## License
+
+Code is released under the MIT License (see `LICENSE`).

@@ -28,6 +28,10 @@ def client():
             {"filename": "paper_b.pdf", "text": "chunk 3"},
         ])
         import api
+        from src.ratelimit import QueryLimiter
+
+        # Fresh, generous limiter per test so rate limiting doesn't leak between tests.
+        api.limiter = QueryLimiter(per_minute=1000, daily_cap=100000)
         yield TestClient(api.app)
 
 
@@ -127,3 +131,32 @@ class TestRequestLoggingMiddleware:
         log_records = [r for r in caplog.records if r.name == "api" and r.message == "Request handled"]
         assert len(log_records) == 1
         assert log_records[0].status_code == 422
+
+
+class TestQueryLimits:
+    def test_overlong_question_is_rejected(self, client):
+        response = client.post("/query", json={"question": "x" * 501, "top_k": 5})
+        assert response.status_code == 422
+
+    def test_question_at_max_length_is_accepted(self, client):
+        with patch("api.rag_query", return_value=("ok", [])):
+            response = client.post("/query", json={"question": "x" * 500, "top_k": 5})
+        assert response.status_code == 200
+
+    def test_per_minute_limit_returns_429(self, client):
+        import api
+        from src.ratelimit import QueryLimiter
+
+        api.limiter = QueryLimiter(per_minute=2, daily_cap=100)
+        with patch("api.rag_query", return_value=("ok", [])):
+            codes = [client.post("/query", json={"question": "q", "top_k": 1}).status_code for _ in range(3)]
+        assert codes == [200, 200, 429]
+
+    def test_daily_cap_returns_429(self, client):
+        import api
+        from src.ratelimit import QueryLimiter
+
+        api.limiter = QueryLimiter(per_minute=100, daily_cap=1)
+        with patch("api.rag_query", return_value=("ok", [])):
+            codes = [client.post("/query", json={"question": "q", "top_k": 1}).status_code for _ in range(2)]
+        assert codes == [200, 429]

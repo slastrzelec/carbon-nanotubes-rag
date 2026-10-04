@@ -16,6 +16,7 @@ load_dotenv()  # must run before importing src.generation, which creates an Open
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from src.ratelimit import QueryLimiter
 from src.retrieval import Retriever
 from src.generation import rag_query
 from src import config
@@ -32,6 +33,18 @@ app = FastAPI(
 # Loaded once at startup, reused across requests — avoids reloading the embedding
 # model and FAISS index on every call.
 retriever = Retriever()
+
+limiter = QueryLimiter(config.RATE_LIMIT_PER_MINUTE, config.DAILY_QUERY_CAP)
+
+
+def client_id(request: Request) -> str:
+    """Best-effort client identity. Behind a proxy the first X-Forwarded-For
+    entry is used; it can be spoofed, which is why the global daily cap in
+    QueryLimiter is the actual cost ceiling."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 @app.middleware("http")
@@ -54,7 +67,12 @@ async def log_requests(request: Request, call_next):
 
 
 class QueryRequest(BaseModel):
-    question: str = Field(..., min_length=1, description="The question to ask, must not be empty.")
+    question: str = Field(
+        ...,
+        min_length=1,
+        max_length=config.MAX_QUESTION_CHARS,
+        description=f"The question to ask (1-{config.MAX_QUESTION_CHARS} characters).",
+    )
     top_k: int = Field(default=config.DEFAULT_TOP_K, ge=1, le=20, description="Number of chunks to retrieve (1-20).")
 
 
@@ -65,8 +83,14 @@ def health_check():
 
 
 @app.post("/query")
-def query(request: QueryRequest):
+def query(request: QueryRequest, http_request: Request):
     """Runs the RAG pipeline: retrieves relevant chunks and generates an answer."""
+    refused = limiter.check(client_id(http_request))
+    if refused == "rate":
+        raise HTTPException(status_code=429, detail="Too many requests, please slow down.")
+    if refused == "daily":
+        raise HTTPException(status_code=429, detail="Daily query limit for this demo has been reached. Try again tomorrow.")
+
     question = request.question.strip()
     if not question:
         raise HTTPException(status_code=422, detail="Question must not be empty or whitespace-only.")
