@@ -11,7 +11,7 @@ rebuilt in six phases into a tested, containerized system with a REST API (see b
 
 ## Overview
 
-- Semantic + keyword hybrid search over 25 scientific PDFs on Raman spectroscopy of carbon nanotubes
+- Semantic + keyword hybrid search over 24 scientific PDFs on Raman spectroscopy of carbon nanotubes
 - LLM-generated answers grounded in retrieved context, with source citations
 - Evaluated for factual faithfulness using [RAGAs](https://github.com/explodinggradients/ragas)
 
@@ -290,7 +290,7 @@ protected against abuse and runaway cost:
   (faithfulness) scored by an LLM judge, so the ~0.80–0.82 figure is an
   indication, not a precise measurement. Retrieval quality (context precision)
   was not measured.
-- Answers are grounded in a small corpus of about 25 papers; questions outside
+- Answers are grounded in a small corpus of 24 papers; questions outside
   it get a refusal or a general-knowledge answer, not a literature search.
 - The embedding model (`all-MiniLM-L6-v2`) is a small general-purpose model,
   not tuned for spectroscopy terminology.
@@ -326,3 +326,8 @@ Ideas for further extending the project, not currently planned:
 ## License
 
 Code is released under the MIT License (see `LICENSE`).
+
+The indexed publications (`data/processed/`) are third-party works that remain
+the property of their authors and publishers. They are included only so the
+demo can run and are not covered by the MIT License. If you are a rights
+holder and want a document removed, open an issue and it will be removed.
