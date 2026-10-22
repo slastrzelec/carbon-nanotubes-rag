@@ -35,6 +35,9 @@ app = FastAPI(
 retriever = Retriever()
 
 limiter = QueryLimiter(config.RATE_LIMIT_PER_MINUTE, config.DAILY_QUERY_CAP)
+# Separate budget for retrieval-only calls: they cost no LLM tokens, so they must
+# not consume the paid /query budget, but they still need a ceiling.
+search_limiter = QueryLimiter(config.SEARCH_RATE_LIMIT_PER_MINUTE, config.SEARCH_DAILY_CAP)
 
 
 def client_id(request: Request) -> str:
@@ -74,6 +77,21 @@ class QueryRequest(BaseModel):
         description=f"The question to ask (1-{config.MAX_QUESTION_CHARS} characters).",
     )
     top_k: int = Field(default=config.DEFAULT_TOP_K, ge=1, le=20, description="Number of chunks to retrieve (1-20).")
+
+
+class SearchRequest(BaseModel):
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=config.MAX_QUESTION_CHARS,
+        description=f"Search text (1-{config.MAX_QUESTION_CHARS} characters).",
+    )
+    top_k: int = Field(
+        default=config.DEFAULT_TOP_K,
+        ge=1,
+        le=config.MAX_SEARCH_TOP_K,
+        description=f"Number of chunks to return (1-{config.MAX_SEARCH_TOP_K}).",
+    )
 
 
 @app.get("/health")
@@ -120,6 +138,40 @@ def query(request: QueryRequest, http_request: Request):
     )
 
     return {"answer": answer, "sources": retrieved_chunks}
+
+
+@app.post("/search")
+def search(request: SearchRequest, http_request: Request):
+    """Retrieval only: returns the ranked chunks that /query would use as context,
+    without calling the LLM. Same hybrid (dense + BM25) retrieval as /query."""
+    refused = search_limiter.check(client_id(http_request))
+    if refused == "rate":
+        raise HTTPException(status_code=429, detail="Too many requests, please slow down.")
+    if refused == "daily":
+        raise HTTPException(status_code=429, detail="Daily search limit for this demo has been reached. Try again tomorrow.")
+
+    query_text = request.query.strip()
+    if not query_text:
+        raise HTTPException(status_code=422, detail="Query must not be empty or whitespace-only.")
+
+    start_time = time.perf_counter()
+    try:
+        results = retriever.retrieve(query_text, top_k=request.top_k)
+    except Exception as e:
+        # The exception text stays in the server log; the client gets a fixed message.
+        logger.error("Search failed", extra={"top_k": request.top_k, "error": str(e)})
+        raise HTTPException(status_code=500, detail="Search failed.")
+
+    logger.info(
+        "Search processed",
+        extra={
+            "query_chars": len(query_text),
+            "top_k": request.top_k,
+            "num_results": len(results),
+            "duration_ms": round((time.perf_counter() - start_time) * 1000, 2),
+        },
+    )
+    return {"results": results}
 
 
 @app.get("/documents")

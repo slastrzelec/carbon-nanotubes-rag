@@ -30,6 +30,11 @@ MAX_QUESTION_CHARS = 500
 RATE_LIMIT_PER_MINUTE = 10   # na klienta
 DAILY_QUERY_CAP = 500        # łącznie, dla wszystkich klientów
 
+# 🔹 /search (retrieval only, no LLM call): cheaper, but still CPU-bound on a small instance
+MAX_SEARCH_TOP_K = 10
+SEARCH_RATE_LIMIT_PER_MINUTE = 30   # per client
+SEARCH_DAILY_CAP = 5000             # total, all clients
+
 # 🔹 LLM
 LLM_MODEL = "gpt-4o-mini"
 LLM_MAX_TOKENS = 500

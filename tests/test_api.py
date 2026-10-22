@@ -32,6 +32,7 @@ def client():
 
         # Fresh, generous limiter per test so rate limiting doesn't leak between tests.
         api.limiter = QueryLimiter(per_minute=1000, daily_cap=100000)
+        api.search_limiter = QueryLimiter(per_minute=1000, daily_cap=100000)
         yield TestClient(api.app)
 
 
@@ -98,6 +99,70 @@ class TestQueryEndpoint:
 
         assert response.status_code == 502
         assert "OpenAI timeout" in response.json()["detail"]
+
+
+class TestSearchEndpoint:
+    FAKE_RESULTS = [{"rank": 1, "filename": "paper_a.pdf", "text": "chunk 1", "score": 0.81}]
+
+    def test_returns_ranked_chunks_without_calling_the_llm(self, client):
+        import api
+
+        with patch.object(api.retriever, "retrieve", return_value=self.FAKE_RESULTS) as mock_retrieve, \
+                patch("api.rag_query") as mock_rag_query:
+            response = client.post("/search", json={"query": "  D band  ", "top_k": 3})
+
+        assert response.status_code == 200
+        assert response.json() == {"results": self.FAKE_RESULTS}
+        mock_rag_query.assert_not_called()
+        args, kwargs = mock_retrieve.call_args
+        assert args[0] == "D band"  # stripped before retrieval
+        assert kwargs["top_k"] == 3
+
+    @pytest.mark.parametrize("payload", [
+        {"query": "", "top_k": 5},
+        {"query": "   ", "top_k": 5},
+        {"query": "x" * 501, "top_k": 5},
+        {"query": "valid", "top_k": 0},
+        {"query": "valid", "top_k": 11},
+        {"top_k": 5},
+    ])
+    def test_invalid_input_is_rejected_before_retrieval(self, client, payload):
+        import api
+
+        with patch.object(api.retriever, "retrieve") as mock_retrieve:
+            response = client.post("/search", json=payload)
+        assert response.status_code == 422
+        mock_retrieve.assert_not_called()
+
+    def test_failure_returns_500_without_internal_details(self, client):
+        import api
+
+        with patch.object(api.retriever, "retrieve", side_effect=RuntimeError("index file /secret/path missing")):
+            response = client.post("/search", json={"query": "valid", "top_k": 5})
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Search failed."}
+
+    def test_has_its_own_rate_limit_separate_from_query(self, client):
+        import api
+        from src.ratelimit import QueryLimiter
+
+        api.search_limiter = QueryLimiter(per_minute=1, daily_cap=100)
+        with patch.object(api.retriever, "retrieve", return_value=[]), \
+                patch("api.rag_query", return_value=("ok", [])):
+            search_codes = [client.post("/search", json={"query": "q"}).status_code for _ in range(2)]
+            query_code = client.post("/query", json={"question": "q"}).status_code
+        assert search_codes == [200, 429]
+        assert query_code == 200  # the paid /query budget is untouched
+
+    def test_query_text_is_not_logged(self, client, caplog):
+        import logging
+        import api
+
+        with caplog.at_level(logging.INFO, logger="api"), \
+                patch.object(api.retriever, "retrieve", return_value=[]):
+            client.post("/search", json={"query": "UNIQUE-MARKER-123"})
+        assert "UNIQUE-MARKER-123" not in caplog.text
+        assert all("UNIQUE-MARKER-123" not in str(r.__dict__) for r in caplog.records)
 
 
 class TestRequestLoggingMiddleware:
