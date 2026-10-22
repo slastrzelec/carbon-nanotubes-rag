@@ -93,10 +93,14 @@ just through the Streamlit UI. Both interfaces share the exact same `src/` modul
 
 **What was added:**
 
-- **Three endpoints:**
+- **Endpoints:**
   - `GET /health` — liveness check
   - `POST /query` — runs the RAG pipeline (retrieval + generation), returns the
     answer and its sources
+  - `POST /search` — retrieval only (same hybrid search, no LLM call): returns the
+    ranked chunks with filename and score; `top_k` 1–10, its own rate limit
+    (30/min per client, 5000/day) separate from the paid `/query` budget; the query
+    text is not logged and internal errors return a fixed message
   - `GET /documents` — lists all indexed source PDFs
 - **Request validation** (Pydantic) — questions must be non-empty and non-whitespace;
   `top_k` is bounded to a sane range (1–20). Invalid requests are rejected with a
